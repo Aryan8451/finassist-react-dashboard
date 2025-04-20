@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
+import { Database } from '@/integrations/supabase/types';
 
 // Define user roles
 export type UserRole = 'admin' | 'user' | 'guest';
@@ -67,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: session.user.email || '',
               firstName: profileData.first_name || '',
               lastName: profileData.last_name || '',
-              role: profileData.role || 'user'
+              role: profileData.role as UserRole || 'user'
             });
             setIsAuthenticated(true);
           }
@@ -88,7 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: session.user.email || '',
               firstName: profileData.first_name || '',
               lastName: profileData.last_name || '',
-              role: profileData.role || 'user'
+              role: profileData.role as UserRole || 'user'
             });
             setIsAuthenticated(true);
           }
