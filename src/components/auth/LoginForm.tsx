@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { toast } from 'sonner';
 
 export const LoginForm = () => {
   const [email, setEmail] = useState('');
@@ -21,22 +22,26 @@ export const LoginForm = () => {
     setLoading(true);
 
     try {
+      console.log('Attempting login with:', { email });
       const success = await login(email, password);
+      console.log('Login result:', success);
+      
       if (success) {
         navigate('/dashboard');
       } else {
         setError('Invalid email or password. Try using admin@finassist.com / password');
       }
     } catch (err) {
+      console.error('Login error:', err);
       setError('Failed to log in. Please try again.');
-      console.error(err);
+      toast.error('Login failed. Please check your credentials and try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-card">
+    <div className="auth-card max-w-md mx-auto mt-12 p-8 rounded-lg shadow-lg border">
       <h2 className="text-2xl font-bold mb-6 text-center gradient-heading">Welcome Back</h2>
       
       {error && (

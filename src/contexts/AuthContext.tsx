@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
 import { Database } from '@/integrations/supabase/types';
+import { toast } from 'sonner';
 
 // Define user roles
 export type UserRole = 'admin' | 'user' | 'guest';
@@ -40,6 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Fetch user profile from Supabase
   const fetchUserProfile = async (userId: string) => {
+    console.log('Fetching user profile for:', userId);
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -51,48 +53,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
 
+    console.log('User profile data:', data);
     return data;
   };
 
   // Set up auth state listener
   useEffect(() => {
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      
-      if (session?.user) {
-        fetchUserProfile(session.user.id).then(profileData => {
-          if (profileData) {
-            setUser({
-              id: session.user.id,
-              email: session.user.email || '',
-              firstName: profileData.first_name || '',
-              lastName: profileData.last_name || '',
-              role: profileData.role as UserRole || 'user'
-            });
-            setIsAuthenticated(true);
-          }
-        });
-      }
-    });
-
-    // Listen for auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, currentSession) => {
+        console.log('Auth state changed:', event, currentSession);
+        setSession(currentSession);
         
-        if (session?.user) {
-          const profileData = await fetchUserProfile(session.user.id);
-          if (profileData) {
-            setUser({
-              id: session.user.id,
-              email: session.user.email || '',
-              firstName: profileData.first_name || '',
-              lastName: profileData.last_name || '',
-              role: profileData.role as UserRole || 'user'
-            });
-            setIsAuthenticated(true);
-          }
+        if (currentSession?.user) {
+          // Use setTimeout to prevent potential deadlocks
+          setTimeout(async () => {
+            const profileData = await fetchUserProfile(currentSession.user.id);
+            if (profileData) {
+              setUser({
+                id: currentSession.user.id,
+                email: currentSession.user.email || '',
+                firstName: profileData.first_name || '',
+                lastName: profileData.last_name || '',
+                role: profileData.role as UserRole || 'user'
+              });
+              setIsAuthenticated(true);
+            } else {
+              console.warn('No profile found for user:', currentSession.user.id);
+              // Handle the case where profile data doesn't exist yet
+              setUser({
+                id: currentSession.user.id,
+                email: currentSession.user.email || '',
+                firstName: '',
+                lastName: '',
+                role: 'user'
+              });
+              setIsAuthenticated(true);
+            }
+          }, 0);
         } else {
           setUser(null);
           setIsAuthenticated(false);
@@ -100,26 +98,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      console.log('Existing session:', existingSession);
+      setSession(existingSession);
+      
+      if (existingSession?.user) {
+        fetchUserProfile(existingSession.user.id).then(profileData => {
+          if (profileData) {
+            setUser({
+              id: existingSession.user.id,
+              email: existingSession.user.email || '',
+              firstName: profileData.first_name || '',
+              lastName: profileData.last_name || '',
+              role: profileData.role as UserRole || 'user'
+            });
+            setIsAuthenticated(true);
+          } else {
+            console.warn('No profile found for existing user:', existingSession.user.id);
+            // Handle case of missing profile data
+            setUser({
+              id: existingSession.user.id,
+              email: existingSession.user.email || '',
+              firstName: '',
+              lastName: '',
+              role: 'user'
+            });
+            setIsAuthenticated(true);
+          }
+        });
+      }
+    });
+
     // Cleanup subscription
     return () => {
-      authListener.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
   // Login function
   const login = async (email: string, password: string): Promise<boolean> => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
 
-    if (error) {
-      console.error('Login error:', error.message);
+      if (error) {
+        console.error('Login error:', error.message);
+        toast.error(error.message || 'Failed to log in');
+        return false;
+      }
+
+      if (data.user) {
+        console.log('Login successful:', data.user);
+        toast.success('Login successful');
+        navigate('/dashboard');
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      console.error('Unexpected login error:', err);
+      toast.error('An unexpected error occurred');
       return false;
     }
-
-    navigate('/dashboard');
-    return true;
   };
 
   // Signup function
@@ -129,45 +172,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     firstName: string, 
     lastName: string
   ): Promise<boolean> => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          first_name: firstName,
-          last_name: lastName
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName
+          }
         }
-      }
-    });
+      });
 
-    if (error) {
-      console.error('Signup error:', error.message);
+      if (error) {
+        console.error('Signup error:', error.message);
+        toast.error(error.message || 'Failed to create account');
+        return false;
+      }
+
+      if (data.user) {
+        console.log('Signup successful:', data.user);
+        toast.success('Account created successfully');
+        navigate('/dashboard');
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      console.error('Unexpected signup error:', err);
+      toast.error('An unexpected error occurred');
       return false;
     }
-
-    navigate('/dashboard');
-    return true;
   };
 
   // Logout function
-  const logout = () => {
-    supabase.auth.signOut().then(() => {
-      setUser(null);
-      setIsAuthenticated(false);
-      navigate('/');
-    });
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast.success('Logged out successfully');
+      navigate('/landing');
+    } catch (err) {
+      console.error('Logout error:', err);
+      toast.error('Failed to log out');
+    }
   };
 
   // Password reset function
   const resetPassword = async (email: string): Promise<boolean> => {
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email);
+    try {
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email);
 
-    if (error) {
-      console.error('Reset password error:', error.message);
+      if (error) {
+        console.error('Reset password error:', error.message);
+        toast.error(error.message || 'Failed to reset password');
+        return false;
+      }
+
+      toast.success('Password reset email sent');
+      return true;
+    } catch (err) {
+      console.error('Unexpected reset password error:', err);
+      toast.error('An unexpected error occurred');
       return false;
     }
-
-    return true;
   };
 
   const value = {
