@@ -151,10 +151,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Logout function
   const logout = () => {
-    supabase.auth.signOut();
-    setUser(null);
-    setIsAuthenticated(false);
-    navigate('/');
+    supabase.auth.signOut().then(() => {
+      setUser(null);
+      setIsAuthenticated(false);
+      navigate('/');
+    });
   };
 
   // Password reset function
